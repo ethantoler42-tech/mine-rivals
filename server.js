@@ -47,13 +47,34 @@ function apply(game, slot, msg) {
   }
 }
 
-const server = http.createServer((req,res) => {
-  const pathname = new URL(req.url, 'http://local').pathname;
-  const file = pathname === '/' ? 'index.html' : pathname.slice(1);
-  const filePath = path.join(root, file);
-  if (!filePath.startsWith(root) || !fs.existsSync(filePath)) { res.writeHead(404); return res.end('Not found'); }
-  const type = file.endsWith('.css') ? 'text/css' : file.endsWith('.js') ? 'application/javascript' : 'text/html';
-  res.writeHead(200, {'Content-Type': type}); fs.createReadStream(filePath).pipe(res);
+const server = http.createServer((req, res) => {
+    // 1. Properly parse the URL path
+    const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
+    const pathname = urlObj.pathname;
+    
+    // 2. Default to index.html for the homepage
+    const file = pathname === '/' ? 'index.html' : pathname.slice(1);
+    
+    // 3. Force path resolution relative to where server.js lives
+    const filePath = path.join(__dirname, file);
+
+    // 4. Safety check to make sure the file actually exists
+    if (!fs.existsSync(filePath)) {
+        res.writeHead(404, {'Content-Type': 'text/plain'});
+        return res.end('Not found');
+    }
+
+    // 5. Set correct content types
+    const type = file.endsWith('.css') ? 'text/css' : file.endsWith('.js') ? 'application/javascript' : 'text/html';
+    
+    res.writeHead(200, {'Content-Type': type});
+    fs.createReadStream(filePath).pipe(res);
+});
+
+// 6. TURN THE SERVER ON (Crucial for Render)
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server is running on port ${PORT}`);
 });
 server.on('upgrade', (req, socket) => {
   const room = new URL(req.url, 'http://x').searchParams.get('room') || 'lobby'; const game = getGame(room);
@@ -66,3 +87,10 @@ server.on('upgrade', (req, socket) => {
   socket.on('close', () => { game.players[slot].socket = null; broadcast(game); });
 });
 server.listen(process.env.PORT || 3000, () => console.log('Mine Rivals: http://localhost:3000'));
+// Render automatically provides the PORT variable. 
+// If it's not found (like when testing locally), it defaults to 3000.
+const PORT = process.env.PORT || 3000;
+
+server.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server is running on port ${PORT}`);
+});
