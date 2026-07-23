@@ -48,30 +48,40 @@ function apply(game, slot, msg) {
 }
 
 const server = http.createServer((req, res) => {
-    // 1. Properly parse the URL path
+    // 1. Get the current URL path
     const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const pathname = urlObj.pathname;
-    
-    // 2. Default to index.html for the homepage
-    const file = pathname === '/' ? 'index.html' : pathname.slice(1);
-    
-    // 3. Force path resolution relative to where server.js lives
-    const filePath = path.join(__dirname, file);
 
-    // 4. Safety check to make sure the file actually exists
-    if (!fs.existsSync(filePath)) {
-        res.writeHead(404, {'Content-Type': 'text/plain'});
-        return res.end('Not found');
+    // 2. Build the Homepage HTML content directly in code
+    if (pathname === '/') {
+        res.writeHead(200, { 'Content-Type': 'text/html' });
+        res.end(`
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="UTF-8">
+                <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                <title>Mine Rivals</title>
+                <style>
+                    body { font-family: sans-serif; text-align: center; padding-top: 50px; background-color: #121212; color: white; }
+                    h1 { color: #ff4757; }
+                </style>
+            </head>
+            <body>
+                <h1>Welcome to Mine Rivals!</h1>
+                <p>Your server is running successfully on Render.</p>
+            </body>
+            </html>
+        `);
+        return;
     }
 
-    // 5. Set correct content types
-    const type = file.endsWith('.css') ? 'text/css' : file.endsWith('.js') ? 'application/javascript' : 'text/html';
-    
-    res.writeHead(200, {'Content-Type': type});
-    fs.createReadStream(filePath).pipe(res);
+    // 3. Fallback for any other pages
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Page not found');
 });
 
-// 6. TURN THE SERVER ON (Crucial for Render)
+// 4. Turn the server on for Render
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`Server is running on port ${PORT}`);
