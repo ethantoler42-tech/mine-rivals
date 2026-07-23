@@ -70,18 +70,174 @@ const server = http.createServer((req, res) => {
                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
                 <title>Mine Rivals</title>
                 <style>
-                    body { font-family: sans-serif; text-align: center; padding-top: 50px; background-color: #121212; color: white; }
-                    h1 { color: #ff4757; }
+                    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; background-color: #1a1a1a; color: #fff; margin: 0; padding: 20px; }
+                    h1 { color: #ff4757; margin-bottom: 5px; }
+                    #status-panel { margin: 15px auto; padding: 10px; max-width: 600px; background: #2d2d2d; border-radius: 8px; border: 1px solid #444; }
+                    #stats { display: flex; justify-content: space-around; font-weight: bold; margin-bottom: 10px; }
+                    #message { color: #eccc68; font-style: italic; }
+                    #grid { display: grid; grid-template-columns: repeat(100, 15px); grid-template-rows: repeat(100, 15px); gap: 1px; justify-content: center; margin: 20px auto; max-width: 95vw; overflow: auto; padding: 10px; background: #111; border-radius: 4px; }
+                    .cell { width: 15px; height: 15px; background-color: #3a3a3a; border-radius: 2px; cursor: pointer; font-size: 10px; line-height: 15px; text-align: center; user-select: none; }
+                    .cell:hover { background-color: #555; }
+                    .cell.clear { background-color: #2f3542; color: #70a1ff; font-weight: bold; }
+                    .cell.mine { background-color: #ff4757; color: white; font-weight: bold; }
+                    .cell.reveal { background-color: #747d8c; }
+                    #controls { margin-top: 15px; }
+                    button { background-color: #2ed573; color: white; border: none; padding: 10px 20px; font-size: 16px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+                    button:hover { background-color: #26af5f; }
+                    button:disabled { background-color: #57606f; cursor: not-allowed; }
                 </style>
             </head>
             <body>
-                <h1>Welcome to Mine Rivals!</h1>
-                <p>Your server is running successfully on Render.</p>
-            </body>
-            </html>
-        `);
-        return;
-    }
+                <h1>💣 Mine Rivals 💣</h1>
+                <div id="status-panel">
+                    <div id="stats">
+                        <div id="p1-stats">Player 1: Connecting...</div>
+                        <div id="p2-stats">Player 2: Connecting...</div>
+                    </div>
+                    <div id="message">Connecting to game server...</div>
+                </div>
+
+                <div id="controls">
+                    <button id="ready-btn" onclick="sendReady()" disabled>Lock In Mines (0/100)</button>
+                </div>
+
+                <div id="grid"></div>
+
+                <script>
+                    // Dynamically establish a secure or insecure WebSocket link to Render
+                    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                    const roomName = new URLSearchParams(window.location.search).get('room') || 'lobby';
+                    const ws = new WebSocket(\`\${protocol}//\${window.location.host}?room=\${roomName}\`);
+
+                    let mySlot = null;
+                    let gameState = null;
+                    let selectedMines = new Set();
+
+                    // Generate the physical 100x100 grid layout
+                    const grid = document.getElementById('grid');
+                    for (let y = 0; y < 100; y++) {
+                        for (let x = 0; x < 100; x++) {
+                            const cell = document.createElement('div');
+                            cell.className = 'cell';
+                            cell.dataset.x = x;
+                            cell.dataset.y = y;
+                            
+                            // Event listeners handling left-click behavior based on game phase
+                            cell.addEventListener('click', () => handleCellClick(x, y));
+                            
+                            // Right-click handles the "reveal" tool action
+                            cell.addEventListener('contextmenu', (e) => {
+                                e.preventDefault();
+                                handleCellRightClick(x, y);
+                            });
+                            
+                            grid.appendChild(cell);
+                        }
+                    }
+
+                    ws.onmessage = (event) => {
+                        const data = JSON.parse(event.data);
+                        
+                        if (data.type === 'joined') {
+                            mySlot = data.slot;
+                            document.getElementById('message').innerText = "Connected! Place 100 mines on your grid, then lock in.";
+                            return;
+                        }
+                        
+                        if (data.type === 'room-full') {
+                            document.getElementById('message').innerText = "This game room is currently full.";
+                            return;
+                        }
+
+                        if (data.type === 'state') {
+                            gameState = data.game;
+                            updateUI();
+                        }
+                    };
+
+                    function handleCellClick(x, y) {
+                        if (!gameState) return;
+                        const key = \`\${x},\${y}\`;
+
+                        if (gameState.status === 'setup') {
+                            if (gameState.players[mySlot].ready) return;
+                            
+                            // Send placement to backend
+                            ws.send(JSON.stringify({ type: 'mine', x, y }));
+                            
+                            // Track locally to update button counter quickly
+                            if (selectedMines.has(key)) {
+                                selectedMines.delete(key);
+                            } else if (selectedMines.size < 100) {
+                                selectedMines.add(key);
+                            }
+                            
+                            const btn = document.getElementById('ready-btn');
+                            btn.innerText = \`Lock In Mines (\${selectedMines.size}/100)\`;
+                            btn.disabled = selectedMines.size !== 100;
+                            
+                            // Visually toggle local choice indicator before server locks it
+                            const cell = document.querySelector(\`[data-x="\${x}"][data-y="\${y}"]\`);
+                            cell.style.backgroundColor = selectedMines.has(key) ? '#eccc68' : '';
+                        } else if (gameState.status === 'play') {
+                            ws.send(JSON.stringify({ type: 'clear', x, y }));
+                        }
+                    }
+
+                    function handleCellRightClick(x, y) {
+                        if (gameState && gameState.status === 'play') {
+                            ws.send(JSON.stringify({ type: 'reveal', x, y }));
+                        }
+                    }
+
+                    function sendReady() {
+                        ws.send(JSON.stringify({ type: 'ready' }));
+                        document.getElementById('ready-btn').disabled = true;
+                        document.getElementById('ready-btn').innerText = "Waiting for Opponent...";
+                    }
+
+                    function updateUI() {
+                        document.getElementById('message').innerText = gameState.message;
+                        
+                        // Update player statistics scoreboards
+                        const p1 = gameState.players[0];
+                        const p2 = gameState.players[1];
+                        
+                        document.getElementById('p1-stats').innerHTML = \`Player 1 \${mySlot === 0 ? '(You)' : ''}<br>Lives: \${p1.lives} | Score: \${p1.score} | Ready: \${p1.ready ? '✅' : '❌'}\`;
+                        document.getElementById('p2-stats').innerHTML = \`Player 2 \${mySlot === 1 ? '(You)' : ''}<br>Lives: \${p2.lives} | Score: \${p2.score} | Ready: \${p2.ready ? '✅' : '❌'}\`;
+
+                        if (gameState.status === 'play') {
+                            document.getElementById('ready-btn').style.display = 'none';
+                        }
+
+                        // Synchronize board tiles with database stream updates
+                        for (let y = 0; y < 100; y++) {
+                            for (let x = 0; x < 100; x++) {
+                                const key = \`\${x},\${y}\`;
+                                const cell = document.querySelector(\`[data-x="\${x}"][data-y="\${y}"]\`);
+                                const tileData = gameState.board[key];
+                                
+                                if (tileData) {
+                                    if (tileData.mine) {
+                                        cell.className = 'cell mine';
+                                        cell.innerText = '💣';
+                                    } else if (tileData.clear) {
+                                        cell.className = 'cell clear';
+                                        cell.innerText = tileData.count > 0 ? tileData.count : '';
+                                        cell.style.backgroundColor = '';
+                                    } else if (tileData.reveal) {
+                                        cell.className = 'cell reveal';
+                                        cell.innerText = '👁️';
+                                    }
+                                } else if (gameState.status === 'play') {
+                                    // Reset layout colors from setup screen
+                                    cell.style.backgroundColor = '';
+                                }
+
+    // 3. Fallback for any unhandled routes
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Page not found');
+});
 
     // 3. Fallback for any unhandled routes
     res.writeHead(404, { 'Content-Type': 'text/plain' });
