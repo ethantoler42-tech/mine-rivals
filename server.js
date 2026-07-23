@@ -96,11 +96,7 @@ server.on('upgrade', (req, socket) => {
   socket.on('data', data => { const length = data[1] & 127; const mask = data.subarray(2,6); const payload = data.subarray(6,6+length); for(let i=0;i<payload.length;i++) payload[i]^=mask[i%4]; try { apply(game,slot,JSON.parse(payload)); broadcast(game); } catch {} });
   socket.on('close', () => { game.players[slot].socket = null; broadcast(game); });
 });
-server.listen(process.env.PORT || 3000, () => console.log('Mine Rivals: http://localhost:3000'));
-// Render automatically provides the PORT variable. 
-// If it's not found (like when testing locally), it defaults to 3000.
 const PORT = process.env.PORT || 3000;
-
 server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server is running on port ${PORT}`);
+    console.log(`Mine Rivals server running on port ${PORT}`);
 });
