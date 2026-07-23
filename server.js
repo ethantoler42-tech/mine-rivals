@@ -48,11 +48,18 @@ function apply(game, slot, msg) {
 }
 
 const server = http.createServer((req, res) => {
-    // 1. Get the current URL path
     const urlObj = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
     const pathname = urlObj.pathname;
 
-    // 2. Build the Homepage HTML content directly in code
+    // 1. Render Health Check Handler (CRUCIAL)
+    // If Render asks for a health check, respond with 200 OK immediately
+    if (pathname === '/healthz' || pathname === '/health' || pathname === '/ping') {
+        res.writeHead(200, { 'Content-Type': 'text/plain' });
+        res.end('OK');
+        return;
+    }
+
+    // 2. Homepage Content
     if (pathname === '/') {
         res.writeHead(200, { 'Content-Type': 'text/html' });
         res.end(`
@@ -76,15 +83,9 @@ const server = http.createServer((req, res) => {
         return;
     }
 
-    // 3. Fallback for any other pages
+    // 3. Fallback for any unhandled routes
     res.writeHead(404, { 'Content-Type': 'text/plain' });
     res.end('Page not found');
-});
-
-// 4. Turn the server on for Render
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server is running on port ${PORT}`);
 });
 server.on('upgrade', (req, socket) => {
   const room = new URL(req.url, 'http://x').searchParams.get('room') || 'lobby'; const game = getGame(room);
